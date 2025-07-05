@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Platform, Text } from 'react-native';
+import { View, ActivityIndicator, Platform, Text, TouchableOpacity, StyleSheet  } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigation } from '@react-navigation/native';
 
 const MapScreen = () => {
   const { user } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation();
 
-  // 🆕 Only fetch logs after user is available
   useEffect(() => {
     if (!user) return;
 
@@ -30,9 +31,8 @@ const MapScreen = () => {
     };
 
     fetchLogs();
-  }, [user]); // 🆕 will re-run once user loads
+  }, [user]); 
 
-  // 🆕 show loading spinner until user is ready
   if (!user || loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -41,7 +41,6 @@ const MapScreen = () => {
     );
   }
 
-  // 🆕 fallback for web platform
   if (Platform.OS === 'web') {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -51,29 +50,60 @@ const MapScreen = () => {
   }
 
   return (
-    <MapView
-      style={{ flex: 1 }}
-      initialRegion={{
-        latitude: 43.651,
-        longitude: -79.347,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1
-      }}
-    >
-      {logs.map(log => (
-        <Marker
-          key={log.id}
-          coordinate={{
-            latitude: log.location.lat,
-            longitude: log.location.lng
-          }}
-          title={log.title}
-          description={log.category}
-          pinColor={log.userId === user.uid ? 'red' : log.public === true && 'blue'}
-        />
-      ))}
-    </MapView>
+    <View style={{ flex: 1 }}>
+      <MapView
+        style={{ flex: 1 }}
+        initialRegion={{
+          latitude: 43.651,
+          longitude: -79.347,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1
+        }}
+      >
+        {logs.map(log => (
+          <Marker
+            key={log.id}
+            coordinate={{
+              latitude: log.location.lat,
+              longitude: log.location.lng
+            }}
+            title={log.title}
+            description={log.category}
+            pinColor={log.userId === user.uid ? 'red' : log.public === true && 'blue'}
+          />
+        ))}
+      </MapView>
+      <TouchableOpacity
+          style={styles.fab}
+          onPress={() => navigation.navigate('AddLog')}
+        >
+          <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+    </View>
   );
 };
 
 export default MapScreen;
+
+const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    backgroundColor: '#2196F3',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5
+  },
+  fabText: {
+    fontSize: 32,
+    color: 'white',
+    marginTop: -2
+  }
+});

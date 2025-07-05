@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../hooks/useAuth';
+import { Switch } from 'react-native';
+import * as Location from 'expo-location';
 
 const AddLogScreen = () => {
     const { user } = useAuth();
@@ -10,8 +12,23 @@ const AddLogScreen = () => {
     const [category, setCategory] = useState('');
     const [lat, setLat] = useState('');
     const [lng, setLng] = useState('');
+    const [isPublic, setIsPublic] = useState(false);
 
-    const handleAddLog = async () => {
+    useEffect(() => {
+        (async () => {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission to access location was denied');
+            return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({});
+        setLat(location.coords.latitude.toString());
+        setLng(location.coords.longitude.toString());
+        })();
+    }, []);
+
+    const handleAddLog = async () => {    
         if (!title || !category || !lat || !lng) {
             Alert.alert('Please fill in all fields.');
             return;
@@ -26,6 +43,7 @@ const AddLogScreen = () => {
                     lng: parseFloat(lng)
                 },
                 userId: user.uid,
+                public: isPublic,
                 createdAt: serverTimestamp()
             });
 
@@ -34,6 +52,7 @@ const AddLogScreen = () => {
             setCategory('');
             setLat('');
             setLng('');
+            setIsPublic(false);
         } catch (error) {
             console.error('Error adding log:', error);
             Alert.alert('Error saving log.');
@@ -53,6 +72,11 @@ const AddLogScreen = () => {
 
             <Text style={styles.label}>Longitude</Text>
             <TextInput style={styles.input} value={lng} onChangeText={setLng} keyboardType="numeric" />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 8 }}>
+                <Text style={{ marginRight: 10 }}>Make this log public?</Text>
+                <Switch value={isPublic} onValueChange={setIsPublic} />
+            </View>
 
             <Button title="Add Log" onPress={handleAddLog} />
         </View>

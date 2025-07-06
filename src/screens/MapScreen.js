@@ -1,58 +1,63 @@
-import React, { useState, useCallback } from 'react';
-import { View, ActivityIndicator, Platform, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, ActivityIndicator, Platform, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigation, useFocusEffect } from '@react-navigation/native'; // 🆕 Added useFocusEffect
-import * as Location from 'expo-location';
+import { useNavigation } from '@react-navigation/native';
 
 const MapScreen = () => {
   const { user } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [userLocation, setUserLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(null); // 🆕 store user location
+  const mapRef = useRef(null); // 🆕 ref for animating map
   const navigation = useNavigation();
 
-  // 🆕 Refactored fetch logic into reusable function
-  const fetchLogsAndLocation = useCallback(async () => {
+  // 🆕 Get user's current location on mount
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({});
+        const { latitude, longitude } = location.coords;
+        setUserLocation({ latitude, longitude });
+
+        // 🆕 Animate to user's location when available
+        mapRef.current?.animateToRegion({
+          latitude,
+          longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01
+        }, 1000);
+      }
+    })();
+  }, []);
+
+  // Load logs
+  useEffect(() => {
     if (!user) return;
 
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission to access location was denied');
-        return;
+    const fetchLogs = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'logs'));
+        const data = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(doc => doc.public || doc.userId === user.uid);
+
+        setLogs(data);
+      } catch (err) {
+        console.error('Error fetching logs:', err);
+      } finally {
+        setLoading(false);
       }
+    };
 
-      const location = await Location.getCurrentPositionAsync({});
-      setUserLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude
-      });
-
-      const snapshot = await getDocs(collection(db, 'logs'));
-      const data = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(doc => doc.public || doc.userId === user.uid);
-
-      setLogs(data);
-    } catch (err) {
-      console.error('Error:', err);
-    } finally {
-      setLoading(false);
-    }
+    fetchLogs();
   }, [user]);
 
-  // 🆕 Re-run every time screen regains focus
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      fetchLogsAndLocation();
-    }, [fetchLogsAndLocation])
-  );
-
-  if (!user || loading || !userLocation) {
+  if (!user || loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center' }}>
         <ActivityIndicator size="large" />
@@ -71,20 +76,16 @@ const MapScreen = () => {
   return (
     <View style={{ flex: 1 }}>
       <MapView
+        ref={mapRef} // 🆕 connect ref
         style={{ flex: 1 }}
+        showsUserLocation // 🆕 shows green dot
         initialRegion={{
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
+          latitude: userLocation?.latitude || 43.651,
+          longitude: userLocation?.longitude || -79.347,
           latitudeDelta: 0.1,
           longitudeDelta: 0.1
         }}
       >
-        <Marker
-          coordinate={userLocation}
-          title="Your Location"
-          pinColor="green"
-        />
-
         {logs.map(log => (
           <Marker
             key={log.id}
@@ -101,10 +102,7 @@ const MapScreen = () => {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => navigation.navigate('AddLog', {
-          lat: userLocation.latitude,
-          lng: userLocation.longitude
-        })}
+        onPress={() => navigation.navigate('AddLog')}
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>

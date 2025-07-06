@@ -1,35 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, Switch } from 'react-native';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../hooks/useAuth';
-import { Switch } from 'react-native';
-import * as Location from 'expo-location';
 import MapView, { Marker } from 'react-native-maps';
 
-const AddLogScreen = () => {
+const AddLogScreen = ({ route }) => {
     const { user } = useAuth();
+
+    // 🆕 Use location passed from MapScreen
+    const initialLat = route.params?.lat ?? 43.651;
+    const initialLng = route.params?.lng ?? -79.347;
+
     const [title, setTitle] = useState('');
     const [category, setCategory] = useState('');
-    const [lat, setLat] = useState(43.651);
-    const [lng, setLng] = useState(79.347);
+    const [lat, setLat] = useState(initialLat);
+    const [lng, setLng] = useState(initialLng);
     const [isPublic, setIsPublic] = useState(false);
-    const [locationLoaded, setLocationLoaded] = useState(false);
-
-    useEffect(() => {
-        (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Permission to access location was denied');
-                return;
-            }
-
-            const location = await Location.getCurrentPositionAsync({});
-            setLat(location.coords.latitude);
-            setLng(location.coords.longitude);
-            setLocationLoaded(true);
-        })();
-    }, []);
 
     const handleAddLog = async () => {
         if (!title || !category || !lat || !lng) {
@@ -53,8 +40,6 @@ const AddLogScreen = () => {
             Alert.alert('Log added!');
             setTitle('');
             setCategory('');
-            setLat('');
-            setLng('');
             setIsPublic(false);
         } catch (error) {
             console.error('Error adding log:', error);
@@ -69,11 +54,10 @@ const AddLogScreen = () => {
 
             <Text style={styles.label}>Category</Text>
             <TextInput style={styles.input} value={category} onChangeText={setCategory} placeholder="e.g. Hike, Cafe" />
-            {console.log('lat:', lat, 'lng:', lng, 'locationLoaded:', locationLoaded)}
 
             <Text style={styles.label}>Location (drag the pin)</Text>
             <MapView
-                style={styles.map} // 🆕 fixed style
+                style={styles.map}
                 initialRegion={{
                     latitude: lat,
                     longitude: lng,
@@ -94,7 +78,6 @@ const AddLogScreen = () => {
 
             <Text>Latitude: {lat.toFixed(6)}</Text>
             <Text>Longitude: {lng.toFixed(6)}</Text>
-
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 8 }}>
                 <Text style={{ marginRight: 10 }}>Make this log public?</Text>

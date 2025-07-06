@@ -1,39 +1,58 @@
-import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Platform, Text, TouchableOpacity, StyleSheet  } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, ActivityIndicator, Platform, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native'; // 🆕 Added useFocusEffect
+import * as Location from 'expo-location';
 
 const MapScreen = () => {
   const { user } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState(null);
   const navigation = useNavigation();
 
-  useEffect(() => {
+  // 🆕 Refactored fetch logic into reusable function
+  const fetchLogsAndLocation = useCallback(async () => {
     if (!user) return;
 
-    const fetchLogs = async () => {
-      try {
-        const snapshot = await getDocs(collection(db, 'logs'));
-        const data = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(doc => doc.public || doc.userId === user.uid);
-
-        setLogs(data);
-      } catch (err) {
-        console.error('Error fetching logs:', err);
-      } finally {
-        setLoading(false);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission to access location was denied');
+        return;
       }
-    };
 
-    fetchLogs();
-  }, [user]); 
+      const location = await Location.getCurrentPositionAsync({});
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
 
-  if (!user || loading) {
+      const snapshot = await getDocs(collection(db, 'logs'));
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(doc => doc.public || doc.userId === user.uid);
+
+      setLogs(data);
+    } catch (err) {
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  // 🆕 Re-run every time screen regains focus
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      fetchLogsAndLocation();
+    }, [fetchLogsAndLocation])
+  );
+
+  if (!user || loading || !userLocation) {
     return (
       <View style={{ flex: 1, justifyContent: 'center' }}>
         <ActivityIndicator size="large" />
@@ -54,12 +73,18 @@ const MapScreen = () => {
       <MapView
         style={{ flex: 1 }}
         initialRegion={{
-          latitude: 43.651,
-          longitude: -79.347,
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
           latitudeDelta: 0.1,
           longitudeDelta: 0.1
         }}
       >
+        <Marker
+          coordinate={userLocation}
+          title="Your Location"
+          pinColor="green"
+        />
+
         {logs.map(log => (
           <Marker
             key={log.id}
@@ -73,11 +98,15 @@ const MapScreen = () => {
           />
         ))}
       </MapView>
+
       <TouchableOpacity
-          style={styles.fab}
-          onPress={() => navigation.navigate('AddLog')}
-        >
-          <Text style={styles.fabText}>+</Text>
+        style={styles.fab}
+        onPress={() => navigation.navigate('AddLog', {
+          lat: userLocation.latitude,
+          lng: userLocation.longitude
+        })}
+      >
+        <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
     </View>
   );
